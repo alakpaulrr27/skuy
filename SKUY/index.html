@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Peta Nusantara + Bubble Game</title>
+
+  <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" crossorigin="" />
+  <style>
+    body {
+      margin: 0;
+      padding: 0;
+      background: black;
+      overflow: hidden;
+      height: 100vh;
+      width: 100vw;
+      font-family: Arial, sans-serif;
+      color: yellow;
+    }
+
+    #map {
+      position: fixed;
+      inset: 0;
+      background: black;
+      z-index: 1;
+      transform: rotate(0deg) !important;
+      transform-origin: center center;
+    }
+
+    .ui {
+      position: fixed;
+      left: 12px;
+      bottom: 32px;
+      background: rgba(255,255,255,0.06);
+      backdrop-filter: blur(4px);
+      padding: 6px;
+      border-radius: 8px;
+      color: white;
+      z-index: 1500;
+      font-size: 8px;
+      transition: transform 0.3s ease, opacity 0.3s ease;
+    }
+    .ui.collapsed { transform: translateY(100%); opacity: 0; pointer-events: none; }
+    .ui h3 {margin:0 0 4px 0;font-size:8px}
+    .ui button {
+      display:block;margin-top:4px;padding:4px 6px;
+      border-radius:6px;border:1px solid rgba(255,255,255,0.12);
+      background:transparent;color:inherit;cursor:pointer;width:100%;
+      text-align:left;font-size:8px;
+    }
+    .latin-input {
+      margin-top: 4px;width: 100%;padding: 3px 5px;
+      border-radius: 6px;border: none;outline: none;font-size: 8px;
+    }
+
+    .ui-toggle-btn {
+      position: fixed;left: 12px;bottom: 6px;
+      width: 22px;height: 22px;font-size: 12px;
+      background: #222;color: #fff;border: none;border-radius: 50%;
+      cursor: pointer;z-index: 1600;display: flex;align-items: center;justify-content: center;
+    }
+
+    .scoreboard {
+      position: fixed;
+      top: 0;
+      right: 0;
+      background: rgba(0,0,0,0.6);
+      color: white;
+      padding: 4px;
+      font-size: 8px;
+      line-height: 1.3em;
+      font-weight: bold;
+      z-index: 2000;
+      width: 5vw;
+      height: 100vh;
+      overflow-y: auto;
+      text-align: left;
+    }
+
+    .toggle-btn { display:none } /* gak perlu tombol lagi */
+
+    .emoji {
+      position: absolute;
+      font-size: 18px;
+      cursor: pointer;
+      user-select: none;
+      transition: transform 0.3s, opacity 0.3s;
+      z-index: 1800;
+    }
+    .pop { transform: scale(1.8); opacity: 0; }
+
+    .title-sunda {
+      position: fixed;top: 10px;left: 50%;transform: translateX(-50%);
+      font-size: 34px;font-weight: bold;z-index: 3000;
+      text-shadow: 0 0 6px white, 0 0 12px black;transition: color 1s;
+    }
+  </style>
+</head>
+<body>
+<div id="map"></div>
+
+<div class="ui" id="uiPanel">
+  <h3>Peta Nusantara</h3>
+  <button id="btn-toggle-prov">Show/Hide Province</button>
+  <button id="btn-toggle-kab">Show/Hide Kabupaten/Kota</button>
+  <button id="btn-locate">My Location (GPS)</button>
+  <small>Provinsi maroon, garis putih. Laut hitam.</small>
+  <input type="text" id="latinInput" class="latin-input" placeholder="Ketik Latin → Aksara Sunda" />
+</div>
+<button class="ui-toggle-btn" id="uiToggleBtn">▼</button>
+
+<div class="title-sunda" id="titleSunda">ᮔᮥᮞᮔ᮪ᮒᮛ</div>
+<div class="scoreboard" id="scoreboard"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" crossorigin=""></script>
+<script>
+  /* MAP */
+  const map = L.map('map',{center: [-2.5,118],zoom:5,zoomControl:true,attributionControl:true});
+  const provinceStyle={color:'rgba(255,255,255,0.95)',weight:1.2,opacity:0.95,fillColor:'rgba(0,100,0,0.85)',fillOpacity:0.65};
+  const kabStyle={color:'rgba(255,255,255,0.6)',weight:0.8,opacity:0.8,fillColor:'rgba(0,100,0,0.85)',fillOpacity:0.4};
+  let provinceLayer=null,provVisible=false,kabLayer=null,kabVisible=false,gpsMarker=null,gpsCircle=null;
+
+  async function toggleProvinces(){
+    if(provVisible){map.removeLayer(provinceLayer);provVisible=false;}
+    else{
+      if(!provinceLayer){
+        const res=await fetch('https://raw.githubusercontent.com/superpikar/indonesia-geojson/master/indonesia-province-simple.json');
+        const data=await res.json();
+        provinceLayer=L.geoJSON(data,{style:provinceStyle,
+          onEachFeature:(f,l)=>{l.bindPopup('<strong>'+ (f.properties?.name||'Provinsi') +'</strong>')}
+        });
+      }
+      map.addLayer(provinceLayer);map.fitBounds(provinceLayer.getBounds(),{padding:[30,30]});provVisible=true;
+    }
+  }
+  async function toggleKabupaten(){
+    if(kabVisible){map.removeLayer(kabLayer);kabVisible=false;}
+    else{
+      if(!kabLayer){
+        const res=await fetch('https://raw.githubusercontent.com/cahyadsn/indonesia-geojson/master/indonesia-regency.json');
+        const data=await res.json();
+        kabLayer=L.geoJSON(data,{style:kabStyle,
+          onEachFeature:(f,l)=>{l.bindPopup('<strong>'+ (f.properties?.name||'Kabupaten') +'</strong>')}
+        });
+      }
+      map.addLayer(kabLayer);map.fitBounds(kabLayer.getBounds(),{padding:[30,30]});kabVisible=true;
+    }
+  }
+  function locateUser(){map.locate({setView:true,watch:true,enableHighAccuracy:true,maxZoom:12});}
+  map.on('locationfound',e=>{
+    if(gpsMarker){map.removeLayer(gpsMarker);map.removeLayer(gpsCircle);}
+    gpsMarker=L.marker(e.latlng).addTo(map).bindPopup('Lokasi Saya').openPopup();
+    gpsCircle=L.circle(e.latlng,{radius:e.accuracy,color:'#00f',fillColor:'#00f',fillOpacity:0.15}).addTo(map);
+  });
+  map.on('locationerror',e=>alert('GPS error: '+e.message));
+  document.getElementById('btn-toggle-prov').onclick=toggleProvinces;
+  document.getElementById('btn-toggle-kab').onclick=toggleKabupaten;
+  document.getElementById('btn-locate').onclick=locateUser;
+  toggleProvinces();
+
+    // Daftar emoji lengkap
+    const emojis = [
+      "🌾","🌸","🍀","🌙","⭐","🐟","🦋","🔥","🌿","🥗","💤","☪️","🧘‍♂️","🤲","☕",
+      "🪓","🪚","🪵","⛏️","⚒️","🪨","📚","🗄️","🚭","📝","🪛","🔩","🗜️","🔧","🧲",
+      "🧯","📱","🚾","📧","💺","💻","🖥","$Rp¥🏧","🧑‍🧑‍🧒‍🧒","💟","🚲","🛵","🏍️",
+      "🏞️","🌌","🏕️","🥽","🪣","🔦","🧷","🖇️","✂️","🎣","🫕","🧼","🪥","🪒","🪮",
+      "☂️","🏠","🛏️","🛋️","🥾","🩴","🌾","🥭","🍇","🍠","🍱","🍫","🌐","🙌","✨",
+      "🚘","⛵","🔬","🔭","📡","🛰️","💊","🥋","⌚","🌃","⛩️","🦎","🦆","👾","🤠",
+      "🎃","🤖","🤸","👨‍💻","🌻","🍻","🪴","🌴","🪺","❄️","🐐","🩸","🪽","Bebek carok🦆"
+    ];
+
+  let scores={},totalCount=0;emojis.forEach(e=>scores[e]=0);
+
+  function updateScoreboard(){
+    let sb="";for(let e of emojis){let c=scores[e];let p=totalCount>0?((c/totalCount)*100).toFixed(1):0;sb+=`${e} ${c} (${p}%)<br>`}
+    sb+=`<hr>Total: ${totalCount}`;document.getElementById("scoreboard").innerHTML=sb;
+  }
+
+  function emojiHitGPS(el){
+    if(!gpsMarker)return false;
+    const rect=el.getBoundingClientRect();
+    const cx=rect.left+rect.width/2,cy=rect.top+rect.height/2;
+    const mapPos=map.latLngToContainerPoint(gpsMarker.getLatLng());
+    const dx=cx-mapPos.x,dy=cy-mapPos.y;
+    return Math.sqrt(dx*dx+dy*dy)<40;
+  }
+
+  function createEmoji(){
+    const el=document.createElement("div");el.className="emoji";
+    el.textContent=(Math.random()<0.3)?"🌾":emojis[Math.floor(Math.random()*emojis.length)];
+    document.body.appendChild(el);
+    const startX=Math.random()*window.innerWidth,startY=Math.random()*window.innerHeight;
+    el.style.left=startX+"px";el.style.top=startY+"px";
+    const endX=Math.random()*window.innerWidth,endY=Math.random()*window.innerHeight;
+    const duration=4000+Math.random()*3000,start=Date.now();
+
+    function animate(){
+      const now=Date.now(),progress=(now-start)/duration;
+      if(progress<1){
+        const x=startX+(endX-startX)*progress,y=startY+(endY-startY)*progress;
+        el.style.left=x+"px";el.style.top=y+"px";
+        if(emojiHitGPS(el)){scores[el.textContent]++;totalCount++;updateScoreboard();el.remove();return;}
+        requestAnimationFrame(animate);
+      } else el.remove();
+    }
+    animate();
+    el.onclick=()=>{el.classList.add("pop");setTimeout(()=>el.remove(),300);}
+  }
+  setInterval(createEmoji,500);
+
+  /* SUNDA TITLE */
+  const title=document.getElementById("titleSunda"),latinInput=document.getElementById("latinInput");
+  const latinToSunda={a:"ᮃ",b:"ᮘ",c:"ᮎ",d:"ᮓ",e:"ᮦ",g:"ᮌ",h:"ᮠ",i:"ᮨ",j:"ᮏ",k:"ᮊ",l:"ᮜ",m:"ᮙ",n:"ᮔ",o:"ᮧ",p:"ᮕ",r:"ᮛ",s:"ᮞ",t:"ᮒ",u:"ᮥ",v:"ᮗ",w:"ᮝ",y:"ᮚ"};
+  latinInput.oninput=()=>{let v=latinInput.value.toLowerCase(),s="";for(let ch of v){s+=latinToSunda[ch]||ch}title.textContent=s||"ᮔᮥᮞᮔ᮪ᮒᮛ";};
+  setInterval(()=>{let c=`rgb(${Math.random()*255|0},${Math.random()*255|0},${Math.random()*255|0})`;title.style.color=c;title.style.textShadow=`0 0 6px ${c},0 0 12px black`;},1200);
+
+  /* UI collapse */
+  const uiPanel=document.getElementById("uiPanel"),uiToggleBtn=document.getElementById("uiToggleBtn");let collapsed=false;
+  uiToggleBtn.onclick=()=>{collapsed=!collapsed;uiPanel.classList.toggle("collapsed",collapsed);uiToggleBtn.textContent=collapsed?"▲":"▼";};
+</script>
+</body>
+</html>
